@@ -14,7 +14,3 @@ git clone https://github.com/pureoym/project_monitor.git
 0 6 * * * python /application/search/urlImport.py
 ```
 
-
-test
-
-dsafdsafd
