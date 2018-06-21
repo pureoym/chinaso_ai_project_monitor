@@ -3,7 +3,7 @@
 
 
 
-## 下载到本地
+## 下载
 ```
 git clone https://github.com/pureoym/project_monitor.git
 ```
