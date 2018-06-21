@@ -1,12 +1,12 @@
 ## 项目介绍
 监控系统，包含定时任务脚本等
-\<br>
+<br>
 
 ## 下载
 ```
 git clone https://github.com/pureoym/project_monitor.git
 ```
-\<br>
+<br>
 
 ## crontab配置
 ```
