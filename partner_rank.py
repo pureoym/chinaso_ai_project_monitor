@@ -156,8 +156,7 @@ def save_rank(partners):
             update_sql = 'UPDATE t_dp_partner_bak_20170508 SET externalRank=%s,rank=%s WHERE partnerId=%s' % (
                 external_rank, rank, pid)
             if rank > 0:
-                print
-                update_sql
+                print(update_sql)
             cursor.execute(update_sql)
         conn.commit()
         status = True
