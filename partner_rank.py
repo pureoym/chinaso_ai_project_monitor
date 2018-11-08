@@ -87,15 +87,15 @@ def crawl_alexa(domain_name):
         req = Request(url)
         try:
             response = urlopen(url)
-        except URLError, e:
+        except URLError as e:
             if hasattr(e, 'reason'):
-                print 'URLError, reason: ', e.reason
+                print('URLError, reason: ', e.reason)
             elif hasattr(e, 'code'):
-                print 'Error code: ', e.code
+                print('Error code: ', e.code)
         else:
             xml_str = response.read()
             rank = parse_rank_from_xml(xml_str)
-            print 'rank[%s]=%s' % (domain_name, rank)
+            print('rank[%s]=%s' % (domain_name, rank))
             return rank
     return 0
 
@@ -113,8 +113,8 @@ def parse_rank_from_xml(xml_str):
         for country in root.findall('SD'):
             if country.find('COUNTRY').get('CODE') == 'CN':
                 rank = int(country.find('COUNTRY').get('RANK'))
-    except Exception, e:
-        print 'Parse xml error, error xml:', xml_str
+    except Exception as e:
+        print('Parse xml error, error xml:', xml_str)
     return rank
 
 
@@ -161,7 +161,7 @@ def save_rank(partners):
             cursor.execute(update_sql)
         conn.commit()
         status = True
-    except Exception, e:
+    except Exception as e:
         conn.rollback()  # 确保批量提交的事务性
     finally:
         cursor.close()
@@ -181,23 +181,23 @@ def partner_cmp(x, y):
 if __name__ == "__main__":
     # 从mysqlcp库中读取合作伙伴列表
     partners = get_partner_list()
-    print "获取需要处理的新闻合作伙伴，数量:" + str(len(partners))
+    print("获取需要处理的新闻合作伙伴，数量:" + str(len(partners)))
 
     # 根据合作伙伴列表中的域名调用alexa接口查询排名
-    print "抓取alexa排名："
+    print("抓取alexa排名：")
     partners_updated = update_external_rank(partners)
 
     # 根据外部排名和内部排名，计算排名
-    print "计算排名："
+    print("计算排名：")
     partners_ranked = compute_rank(partners_updated)
     partners_final = sorted(partners_ranked, partner_cmp)
     for i in range(10):
-        print partners_final[i]
+        print(partners_final[i])
 
     # 保存入库
-    print "保存排名计算结果"
+    print("保存排名计算结果")
     # result = save_rank(partners_ranked)
-    if result == True:
-        print "保存成功！"
-    else:
-        print "保存失败！"
+    # if result == True:
+    #     print("保存成功！")
+    # else:
+    #     print("保存失败！")
