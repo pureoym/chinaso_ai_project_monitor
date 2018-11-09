@@ -22,8 +22,10 @@
 
 import numpy as np
 import random
-import MySQLdb
-from urllib2 import Request, urlopen, URLError  # 爬虫下载引用
+import pymysql
+import urllib.request  # 爬虫下载引用
+import pandas as pd
+import mysql_utils
 
 try:  # 解析xml引用
     import xml.etree.cElementTree as ET
@@ -48,7 +50,7 @@ def get_partner_list():
         输出：[partnerId,domainName,internalRank,externalRank]'''
     partners = []
     try:
-        conn = MySQLdb.connect(HOST, USER, PASSWD, DB, PORT)
+        conn = pymysql.connect(HOST, USER, PASSWD, DB, PORT)
         cursor = conn.cursor()
         sql = 'SELECT partnerId,partnerName,domainName,internalRank,externalRank,rank FROM t_dp_partner_bak_20170508 WHERE resourceTypes LIKE \'%01276%\''
         cursor.execute('SET NAMES utf8')
@@ -84,10 +86,10 @@ def crawl_alexa(domain_name):
         return 0
     else:  # 否则，返回抓取的alexa排名
         url = generate_url(domain_name)  # 从Alexa接口URL列表中随机挑选一个生成请求URL
-        req = Request(url)
+        req = urllib.request.Request(url)
         try:
-            response = urlopen(url)
-        except URLError as e:
+            response = urllib.request.urlopen(req)
+        except Exception as e:
             if hasattr(e, 'reason'):
                 print('URLError, reason: ', e.reason)
             elif hasattr(e, 'code'):
@@ -146,7 +148,7 @@ def save_rank(partners):
         输入:[pid,internal_rank,external_rank,norm_in_rank,norm_ex_rank,rank]'''
     status = False
     try:
-        conn = MySQLdb.connect(HOST, USER, PASSWD, DB, PORT)
+        conn = pymysql.connect(HOST, USER, PASSWD, DB, PORT)
         cursor = conn.cursor()
         cursor.execute('SET NAMES utf8')
         for partner in partners:
@@ -177,7 +179,91 @@ def partner_cmp(x, y):
     return 0
 
 
+def get_mysql_conn(conf):
+    """
+    建立mysql链接
+    :param conf:
+    :param logger:
+    :return:
+    """
+    try:
+        conn = pymysql.connect(host=conf['host'],
+                               user=conf['user'],
+                               passwd=conf['passwd'],
+                               db=conf['db'],
+                               port=conf['port'],
+                               charset="utf8")
+        # logger.debug('mysql connection established')
+    except Exception as e:
+        # logger.error(e)
+        print(e)
+        sys.exit()
+    return conn
+
+
+def execute(conn, sql):
+    '''
+    执行sql语句
+    :param conn:
+    :param sql:
+    :return:
+    '''
+    cursor = conn.cursor()
+    try:
+        cursor.execute(sql)
+        conn.commit()
+    except pymysql.Error as e:
+        conn.rollback()
+        # logger.error(e)
+        print(e)
+
+
+def execute_and_get_result(conn, sql):
+    '''
+    执行sql语句
+    :param conn:
+    :param sql:
+    :return:
+    '''
+    cursor = conn.cursor()
+    try:
+        cursor.execute(sql)
+        conn.commit()
+        results = cursor.fetchall()
+        return results
+    except pymysql.Error as e:
+        conn.rollback()
+        print(e)
+
+
 if __name__ == "__main__":
+    # 读取文件
+    p1 = "/application/search/partner_rank/partner_internalrank.txt"
+    partner_df = pd.read_csv(p1, header=None, names=['domainName'])
+
+    # 制作排名并更新至数据库
+    conf = {'host': '10.10.65.232',
+            'user': 'opendata',
+            'passwd': 'opendata_123',
+            'db': 'opendata',
+            'port': 3306}
+    conn = get_mysql_conn(conf)
+
+    sql1 = "SELECT MAX(t.internalRank) FROM t_dp_partner_backup_20181109_copy t"
+    internal_rank_max = execute_and_get_result(conn, sql1)[0][0]
+
+    partner_df['internalRank'] = internal_rank_max + partner_df.index + 1
+
+    domain_name_list = ""
+    sql2 = "SELECT t.* FROM t_dp_partner t WHERE t.internalRank != 0 and t.domainName in (" + domain_name_list + ")"
+
+    partner_df['sql1'] = "UPDATE t_dp_partner t SET t.internalRank = "+partner_df['internalRank'].map(str) + \
+                         " WHERE t.domainName = '" + partner_df['domainName'] +"'"
+
+    "UPDATE t_dp_partner t SET t.internalRank = 101 WHERE t.domainName = 'http://www.gov.cn'"
+
+    conn.close()
+
     # 从mysqlcp库中读取合作伙伴列表
     partners = get_partner_list()
     print("获取需要处理的新闻合作伙伴，数量:" + str(len(partners)))
