@@ -34,7 +34,9 @@ except ImportError:
     import xml.etree.ElementTree as ET
 
 ALEXA_URL = ["http://data.alexa.com/data/TCaX/0+qO000fV?cli=10&url="]  # alexa接口URL列表
-# ALEXA_URL = ["http://data.alexa.com/data/TCaX/0+qO000fV?cli=10&url=","http://data.alexa.com/data/ezdy01DOo100QI?cli=10&url=","http://data.alexa.com/data/+wQ411en8000lA?cli=10&url="] # alexa接口URL列表
+# ALEXA_URL = ["http://data.alexa.com/data/TCaX/0+qO000fV?cli=10&url=",
+#              "http://data.alexa.com/data/ezdy01DOo100QI?cli=10&url=",
+#              "http://data.alexa.com/data/+wQ411en8000lA?cli=10&url="] # alexa接口URL列表
 
 INTERNAL_WEIGHT = 0.9  # 内部排名占排名的算法权重
 
@@ -46,9 +48,10 @@ DB = 'opendata'
 PORT = 3306
 
 # 更新的合作伙伴表名
-TABLE = 't_dp_partner_bak_20170508'
+TABLE = 't_dp_partner_backup_20181112'
 # 新增内部排名的文件地址
-NEW_INTERNAL_RANK_PATH = '/application/search/partner_rank/partner_update_internal_rank.txt'
+NEW_INTERNAL_RANK_PATH = '/application/search/partner_rank/partner_internal_rank_20181112.txt'
+ALEXA_RANK = '/application/search/partner_rank/alexa_rank.csv'
 
 # 建立mysql连接
 try:
@@ -149,10 +152,10 @@ def update_internal_rank(internal_rank_data_path):
     partner_df['internalRank'] = internal_rank_max + partner_df.index + 1
 
     # 更新内部排名
-    partner_df['update_sql1'] = "UPDATE " + TABLE + " SET internalRank = " \
-                                + partner_df['internalRank'].map(str) \
-                                + " WHERE domainName = '" + partner_df['domainName'] + "'"
-    partner_df['update_sql1'].map(update_to_db)
+    partner_df['update_sql'] = "UPDATE " + TABLE + " SET internalRank = " \
+                               + partner_df['internalRank'].map(str) \
+                               + " WHERE domainName = '" + partner_df['domainName'] + "'"
+    partner_df['update_sql'].map(update_to_db)
 
 
 def update_external_rank():
@@ -166,22 +169,85 @@ def update_external_rank():
 
     # 查询有域名的合作伙伴
     try:
-        sql = 'SELECT partnerId,domainName,internalRank,externalRank FROM ' \
-              + TABLE + ' WHERE LENGTH(domainName) > 0'
+        sql = 'SELECT partnerId,domainName FROM ' + TABLE + ' WHERE LENGTH(domainName) > 0'
         df = pd.read_sql(sql, con=engine)
     except pymysql.err.ProgrammingError as e:
         print('ProgrammingError: ' + str(e))
         sys.exit()
 
     # 通过域名获取外部排名
-    update_sql = ''
-    df.to_sql(name='t_dp_partner_backup_20181112', con=engine, if_exists='append', index_label='partnerId')
+    df['externalRank'] = df['domainName'].map(download_rank)
 
-    # 更新这些排名
-    print(df.head())
-    df.to_sql(name='sum_case_1', con=engine, if_exists='append', index=False)
-    conn.close()
-    print('ok')
+    # 保存下载结果
+    df.to_csv(ALEXA_RANK, index=False)
+
+    # 更新内部排名
+    df['update_sql'] = "UPDATE " + TABLE + " SET externalRank = " \
+                       + df['externalRank'].map(str) + " WHERE partnerId = '" \
+                       + df['partnerId'].map(str) + "'"
+    df['update_sql'].map(update_to_db)
+
+    return df
+
+
+def download_rank(domain_name):
+    """
+    通过alex接口下载网站排名
+    :param url: 网站的url
+    :return: 网站的排名，如果无数据则返回0
+    """
+    if domain_name is None:  # 如果输入域名为空，则返回0
+        return 0
+    if domain_name == '':  # 如果输入域名为空串，则返回0
+        return 0
+    else:  # 否则，返回抓取的alexa排名
+        url = generate_url(domain_name)  # 从Alexa接口URL列表中随机挑选一个生成请求URL
+        req = urllib.request.Request(url)
+        try:
+            response = urllib.request.urlopen(req)
+        except Exception as e:
+            if hasattr(e, 'reason'):
+                print('URLError, reason: ', e.reason)
+            elif hasattr(e, 'code'):
+                print('Error code: ', e.code)
+        else:
+            xml_str = response.read()
+            rank = parse_rank_from_xml(xml_str)
+            print('rank[%s]=%s' % (domain_name, rank))
+            return rank
+    return 0
+
+
+def generate_url(domain_name):
+    '''从Alexa接口URL列表中随机挑选一个生成请求URL'''
+    return random.choice(ALEXA_URL) + domain_name
+
+
+def parse_rank_from_xml(xml_str):
+    '''解析抓取到的XML内容，得到RANK'''
+    rank = 0
+    try:
+        root = ET.fromstring(xml_str)
+        for country in root.findall('SD'):
+            if country.find('COUNTRY').get('CODE') == 'CN':
+                rank = int(country.find('COUNTRY').get('RANK'))
+    except Exception as e:
+        print('Parse xml error, error xml:', xml_str)
+    return rank
+
+
+# def compute_rank(partners):
+#     '''计算排名
+#         输入:[pid,internal_rank,external_rank]
+#         输出:[pid,internal_rank,external_rank,norm_in_rank,norm_ex_rank,rank]'''
+#     pa = np.array(partners)
+#     in_rank = pa[:, 1]  # 获取内部排名
+#     norm_in_rank = normalize(in_rank)  # 内部排名归一化
+#     ex_rank = pa[:, 2]  # 获取外部排名
+#     norm_ex_rank = normalize(ex_rank)  # 外部排名归一化
+#     rank = INTERNAL_WEIGHT * norm_in_rank + (1 - INTERNAL_WEIGHT) * norm_ex_rank  # 根据归一化的排名和权重计算最终排名
+#     pa_ranked = np.c_[pa, norm_in_rank, norm_ex_rank, rank]
+#     return pa_ranked
 
 
 def calculate_rank_and_update():
@@ -189,7 +255,45 @@ def calculate_rank_and_update():
     根据外部排名和内部排名计算合作伙伴排名
     :return:
     """
-    pass
+    # 查询有内部排名或者外部排名的合作伙伴
+    try:
+        sql = 'SELECT partnerId,internalRank,externalRank FROM ' + TABLE + ' WHERE externalRank != 0 OR internalRank != 0'
+        df = pd.read_sql(sql, con=engine)
+    except pymysql.err.ProgrammingError as e:
+        print('ProgrammingError: ' + str(e))
+        sys.exit()
+
+    imax = df['internalRank'].max()
+    imin = df['internalRank'].min()
+    emax = df['externalRank'].max()
+    emin = df['externalRank'].min()
+
+    # 排名归一化
+    df['norm_internal_rank'] = df['internalRank'] \
+        .map(lambda x: (imax - x + 1) / (imax - imin + 1.0)) \
+        .map(f1)
+    df['norm_external_rank'] = df['externalRank'] \
+        .map(lambda x: (emax - x + 1) / (emax - emin + 1.0)) \
+        .map(f1)
+
+    # 通过内部排名和外部排名计算合作伙伴排名
+    external_weight = 1.0 / (imax + 2)
+    df['rank'] = df['norm_internal_rank'] * (1.0 - external_weight) + df['norm_external_rank'] * external_weight
+    df['rank'] = df['rank'].map(str)
+
+    # 更新内部排名
+    df['update_sql'] = "UPDATE " + TABLE + " SET rank = " + df['rank'] \
+                       + " WHERE partnerId = '" + df['partnerId'].map(str) + "'"
+    df['update_sql'].map(update_to_db)
+
+    return df
+
+
+def f1(input):
+    if input == 1.0:
+        return 0.0
+    else:
+        return input
 
 
 if __name__ == '__main__':
@@ -198,7 +302,10 @@ if __name__ == '__main__':
     update_internal_rank(NEW_INTERNAL_RANK_PATH)
 
     # 更新合作伙伴外部排名
-    update_external_rank()
+    df1 = update_external_rank()
 
     # 计算排名并更新
     calculate_rank_and_update()
+
+    # 关闭mysql连接
+    conn.close()
