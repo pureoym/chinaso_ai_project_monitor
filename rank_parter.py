@@ -299,13 +299,17 @@ def f1(input):
 if __name__ == '__main__':
     # 更新合作伙伴内部排名
     # 需要将域名按照排名顺序按行保存成文本文件txt，并输入该文件
+    print('######### update_internal_rank #########')
     update_internal_rank(NEW_INTERNAL_RANK_PATH)
 
     # 更新合作伙伴外部排名
+    print('######### update_external_rank #########')
     df1 = update_external_rank()
 
     # 计算排名并更新
+    print('######### calculate_rank_and_update #########')
     calculate_rank_and_update()
 
     # 关闭mysql连接
+    print('######### job done! #########')
     conn.close()
