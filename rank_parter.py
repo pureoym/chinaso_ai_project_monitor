@@ -219,12 +219,20 @@ def download_rank(domain_name):
 
 
 def generate_url(domain_name):
-    '''从Alexa接口URL列表中随机挑选一个生成请求URL'''
+    """
+    从Alexa接口URL列表中随机挑选一个生成请求URL
+    :param domain_name:
+    :return:
+    """
     return random.choice(ALEXA_URL) + domain_name
 
 
 def parse_rank_from_xml(xml_str):
-    '''解析抓取到的XML内容，得到RANK'''
+    """
+    解析抓取到的XML内容，得到RANK
+    :param xml_str:
+    :return:
+    """
     rank = 0
     try:
         root = ET.fromstring(xml_str)
@@ -234,20 +242,6 @@ def parse_rank_from_xml(xml_str):
     except Exception as e:
         print('Parse xml error, error xml:', xml_str)
     return rank
-
-
-# def compute_rank(partners):
-#     '''计算排名
-#         输入:[pid,internal_rank,external_rank]
-#         输出:[pid,internal_rank,external_rank,norm_in_rank,norm_ex_rank,rank]'''
-#     pa = np.array(partners)
-#     in_rank = pa[:, 1]  # 获取内部排名
-#     norm_in_rank = normalize(in_rank)  # 内部排名归一化
-#     ex_rank = pa[:, 2]  # 获取外部排名
-#     norm_ex_rank = normalize(ex_rank)  # 外部排名归一化
-#     rank = INTERNAL_WEIGHT * norm_in_rank + (1 - INTERNAL_WEIGHT) * norm_ex_rank  # 根据归一化的排名和权重计算最终排名
-#     pa_ranked = np.c_[pa, norm_in_rank, norm_ex_rank, rank]
-#     return pa_ranked
 
 
 def calculate_rank_and_update():
@@ -300,11 +294,11 @@ if __name__ == '__main__':
     # 更新合作伙伴内部排名
     # 需要将域名按照排名顺序按行保存成文本文件txt，并输入该文件
     print('######### update_internal_rank #########')
-    update_internal_rank(NEW_INTERNAL_RANK_PATH)
+    # update_internal_rank(NEW_INTERNAL_RANK_PATH)
 
     # 更新合作伙伴外部排名
     print('######### update_external_rank #########')
-    df1 = update_external_rank()
+    # df1 = update_external_rank()
 
     # 计算排名并更新
     print('######### calculate_rank_and_update #########')
