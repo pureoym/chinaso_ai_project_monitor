@@ -18,16 +18,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========================================================================
-import numpy as np
 import random
-import urllib.request  # 爬虫下载引用
+import urllib.request
 import pandas as pd
 import pymysql
 import sys
-from sqlalchemy import create_engine
-import sqlalchemy
 
-# 解析xml引用
 try:
     import xml.etree.cElementTree as ET
 except ImportError:
@@ -38,14 +34,6 @@ ALEXA_URL = ["http://data.alexa.com/data/TCaX/0+qO000fV?cli=10&url="]  # alexa�
 #              "http://data.alexa.com/data/ezdy01DOo100QI?cli=10&url=",
 #              "http://data.alexa.com/data/+wQ411en8000lA?cli=10&url="] # alexa接口URL列表
 
-INTERNAL_WEIGHT = 0.9  # 内部排名占排名的算法权重
-
-# mysql登陆信息
-HOST = '10.10.65.232'
-USER = 'opendata'
-PASSWD = 'opendata_123'
-DB = 'opendata'
-PORT = 3306
 
 # 更新的合作伙伴表名
 TABLE = 't_dp_partner_backup_20181112'
@@ -65,45 +53,13 @@ except pymysql.err.OperationalError as e:
     print('OperationalError: ' + str(e))
     sys.exit()
 
-try:
-    engine = create_engine('mysql+pymysql://opendata:opendata_123@10.10.65.232:3306/opendata')
-except sqlalchemy.exc.OperationalError as e:
-    print('OperationalError: ' + str(e))
-    sys.exit()
-except sqlalchemy.exc.InternalError as e:
-    print('InternalError: ' + str(e))
-    sys.exit()
 
-
-def get_mysql_conn(conf):
+def execute_sql(sql):
     """
-    建立mysql链接
-    :param conf:
-    :param logger:
-    :return:
-    """
-    try:
-        conn = pymysql.connect(host=conf['host'],
-                               user=conf['user'],
-                               passwd=conf['passwd'],
-                               db=conf['db'],
-                               port=conf['port'],
-                               charset="utf8")
-        # logger.debug('mysql connection established')
-    except Exception as e:
-        # logger.error(e)
-        print(e)
-        sys.exit()
-    return conn
-
-
-def execute(conn, sql):
-    '''
     执行sql语句
-    :param conn:
     :param sql:
     :return:
-    '''
+    """
     cursor = conn.cursor()
     try:
         cursor.execute(sql)
@@ -112,33 +68,12 @@ def execute(conn, sql):
         conn.rollback()
         # logger.error(e)
         print(e)
-
-
-def execute_and_get_result(conn, sql):
-    '''
-    执行sql语句
-    :param conn:
-    :param sql:
-    :return:
-    '''
-    cursor = conn.cursor()
-    try:
-        cursor.execute(sql)
-        conn.commit()
-        results = cursor.fetchall()
-        return results
-    except pymysql.Error as e:
-        conn.rollback()
-        print(e)
-
-
-def update_to_db(sql):
-    execute(conn, sql)
 
 
 def update_internal_rank(internal_rank_data_path):
     """
     更新合作伙伴内部排名
+    由原来合作伙伴表中最大内部排名依次继续向下排名，作为新增需要排名的合作伙伴的内部排名。
     :param internal_rank_data_path:
     :return:
     """
@@ -146,7 +81,8 @@ def update_internal_rank(internal_rank_data_path):
 
     # 获取原最高内部排名
     sql1 = "SELECT MAX(internalRank) FROM " + TABLE
-    internal_rank_max = execute_and_get_result(conn, sql1)[0][0]
+    df1 = pd.read_sql(sql1, con=conn)
+    internal_rank_max = df1['MAX(internalRank)'][0]
 
     # 计算新内部排名
     partner_df['internalRank'] = internal_rank_max + partner_df.index + 1
@@ -155,7 +91,7 @@ def update_internal_rank(internal_rank_data_path):
     partner_df['update_sql'] = "UPDATE " + TABLE + " SET internalRank = " \
                                + partner_df['internalRank'].map(str) \
                                + " WHERE domainName = '" + partner_df['domainName'] + "'"
-    partner_df['update_sql'].map(update_to_db)
+    partner_df['update_sql'].map(execute_sql)
 
 
 def update_external_rank():
@@ -170,7 +106,7 @@ def update_external_rank():
     # 查询有域名的合作伙伴
     try:
         sql = 'SELECT partnerId,domainName FROM ' + TABLE + ' WHERE LENGTH(domainName) > 0'
-        df = pd.read_sql(sql, con=engine)
+        df = pd.read_sql(sql, con=conn)
     except pymysql.err.ProgrammingError as e:
         print('ProgrammingError: ' + str(e))
         sys.exit()
@@ -182,10 +118,10 @@ def update_external_rank():
     df.to_csv(ALEXA_RANK, index=False)
 
     # 更新内部排名
-    df['update_sql'] = "UPDATE " + TABLE + " SET externalRank = " \
-                       + df['externalRank'].map(str) + " WHERE partnerId = '" \
-                       + df['partnerId'].map(str) + "'"
-    df['update_sql'].map(update_to_db)
+    df['sql'] = "UPDATE " + TABLE + " SET externalRank = " \
+                + df['externalRank'].map(str) + " WHERE partnerId = '" \
+                + df['partnerId'].map(str) + "'"
+    df['sql'].map(execute_sql)
 
     return df
 
@@ -252,7 +188,7 @@ def calculate_rank_and_update():
     # 查询有内部排名或者外部排名的合作伙伴
     try:
         sql = 'SELECT partnerId,internalRank,externalRank FROM ' + TABLE + ' WHERE externalRank != 0 OR internalRank != 0'
-        df = pd.read_sql(sql, con=engine)
+        df = pd.read_sql(sql, con=conn)
     except pymysql.err.ProgrammingError as e:
         print('ProgrammingError: ' + str(e))
         sys.exit()
@@ -278,7 +214,7 @@ def calculate_rank_and_update():
     # 更新内部排名
     df['update_sql'] = "UPDATE " + TABLE + " SET rank = " + df['rank'] \
                        + " WHERE partnerId = '" + df['partnerId'].map(str) + "'"
-    df['update_sql'].map(update_to_db)
+    df['update_sql'].map(execute_sql)
 
     return df
 
