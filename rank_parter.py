@@ -56,7 +56,7 @@ except pymysql.err.OperationalError as e:
 
 def execute_sql(sql):
     """
-    执行sql语句
+    执行sql语句 test
     :param sql:
     :return:
     """
