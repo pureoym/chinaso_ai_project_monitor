@@ -3,7 +3,7 @@
 # @Author  : pureoym
 # @Contact : pureoym@163.com
 # @TIME    : 2018/11/12 16:18
-# @File    : rank_parter.py.py
+# @File    : rank_partner.py.py
 # Copyright 2017 pureoym. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
